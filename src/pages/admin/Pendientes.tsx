@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { archivosApi } from "@/lib/api";
 import { ArchivoSubido } from "@/lib/constants";
 import StatusBadge from "@/components/StatusBadge";
+import PeriodSelector, { getCurrentPeriodo, formatPeriodo } from "@/components/PeriodSelector";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,6 +10,7 @@ import { Download, Check, X, Pencil } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const Pendientes = () => {
+  const [periodo, setPeriodo] = useState(getCurrentPeriodo());
   const [archivos, setArchivos] = useState<ArchivoSubido[]>([]);
   const [loading, setLoading] = useState(true);
   const [rejectId, setRejectId] = useState<string | null>(null);
@@ -20,11 +22,12 @@ const Pendientes = () => {
   const { toast } = useToast();
 
   useEffect(() => {
+    setLoading(true);
     archivosApi
-      .listar("pendiente")
+      .listar("pendiente", periodo)
       .then(setArchivos)
       .finally(() => setLoading(false));
-  }, []);
+  }, [periodo]);
 
   const handleApprove = async (id: string) => {
     setProcessing(id);
@@ -61,8 +64,7 @@ const Pendientes = () => {
     try {
       await archivosApi.resubir(Number(editId), editFile);
       toast({ title: "Archivo actualizado", description: "El documento reparado ha sido subido exitosamente." });
-      // Recargar lista
-      const updated = await archivosApi.listar("pendiente");
+      const updated = await archivosApi.listar("pendiente", periodo);
       setArchivos(updated);
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -83,16 +85,19 @@ const Pendientes = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold font-display text-foreground">Archivos Pendientes</h1>
-        <p className="text-muted-foreground text-sm mt-1">{archivos.length} archivos esperando revisión</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold font-display text-foreground">Archivos Pendientes</h1>
+          <p className="text-muted-foreground text-sm mt-1">{archivos.length} archivos esperando revisión — {formatPeriodo(periodo)}</p>
+        </div>
+        <PeriodSelector periodo={periodo} onChange={setPeriodo} />
       </div>
 
       {archivos.length === 0 ? (
         <div className="bg-card border rounded-xl p-12 text-center">
           <Check className="w-12 h-12 text-success mx-auto mb-3" />
           <p className="text-lg font-semibold text-foreground">Todo al día</p>
-          <p className="text-sm text-muted-foreground">No hay archivos pendientes de revisión</p>
+          <p className="text-sm text-muted-foreground">No hay archivos pendientes en {formatPeriodo(periodo)}</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -112,28 +117,13 @@ const Pendientes = () => {
                 <Button variant="outline" size="sm" onClick={() => archivosApi.descargar(Number(archivo.id))}>
                   <Download className="w-4 h-4 mr-1" /> Ver
                 </Button>
-                <Button
-                  size="sm"
-                  variant="default"
-                  onClick={() => handleApprove(archivo.id)}
-                  disabled={processing === archivo.id}
-                >
+                <Button size="sm" variant="default" onClick={() => handleApprove(archivo.id)} disabled={processing === archivo.id}>
                   <Check className="w-4 h-4 mr-1" /> Aprobar
                 </Button>
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => { setEditId(archivo.id); setEditFile(null); }}
-                  disabled={processing === archivo.id}
-                >
+                <Button size="sm" variant="secondary" onClick={() => { setEditId(archivo.id); setEditFile(null); }} disabled={processing === archivo.id}>
                   <Pencil className="w-4 h-4 mr-1" /> Editar
                 </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={() => setRejectId(archivo.id)}
-                  disabled={processing === archivo.id}
-                >
+                <Button size="sm" variant="destructive" onClick={() => setRejectId(archivo.id)} disabled={processing === archivo.id}>
                   <X className="w-4 h-4 mr-1" /> Rechazar
                 </Button>
               </div>
@@ -172,13 +162,7 @@ const Pendientes = () => {
           <p className="text-sm text-muted-foreground">
             Seleccione el archivo .xlsm corregido. Este reemplazará el documento actual manteniendo al encargado original.
           </p>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".xlsm"
-            className="hidden"
-            onChange={(e) => setEditFile(e.target.files?.[0] || null)}
-          />
+          <input ref={fileInputRef} type="file" accept=".xlsm" className="hidden" onChange={(e) => setEditFile(e.target.files?.[0] || null)} />
           <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
             {editFile ? editFile.name : "Seleccionar archivo .xlsm"}
           </Button>

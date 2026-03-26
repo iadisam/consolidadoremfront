@@ -3,10 +3,12 @@ import { archivosApi, consolidacionesApi, programasApi } from "@/lib/api";
 import { ArchivoSubido } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import PeriodSelector, { getCurrentPeriodo, formatPeriodo } from "@/components/PeriodSelector";
 import { CheckSquare, FileSpreadsheet, Download, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const Consolidar = () => {
+  const [periodo, setPeriodo] = useState(getCurrentPeriodo());
   const [validados, setValidados] = useState<ArchivoSubido[]>([]);
   const [programas, setProgramas] = useState<{ id: number; nombre: string }[]>([]);
   const [loading, setLoading] = useState(true);
@@ -19,8 +21,10 @@ const Consolidar = () => {
   const { toast } = useToast();
 
   useEffect(() => {
+    setLoading(true);
+    setDone(false);
     Promise.all([
-      archivosApi.listar("validado"),
+      archivosApi.listar("validado", periodo),
       programasApi.listar(),
     ])
       .then(([arch, progs]) => {
@@ -28,7 +32,7 @@ const Consolidar = () => {
         setProgramas(progs);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [periodo]);
 
   const canConsolidate = validados.length >= 2;
 
@@ -38,7 +42,7 @@ const Consolidar = () => {
     setDone(false);
 
     const phases = [
-      { p: 10, text: "📂 Cargando plantilla base SA_26_V1.1.xlsm..." },
+      { p: 10, text: "📂 Cargando plantilla base SA_26_V1.2.xlsm..." },
       { p: 30, text: "🔍 Identificando celdas editables..." },
       { p: 50, text: `🔄 Procesando ${validados.length} archivos...` },
       { p: 80, text: "📝 Consolidando datos..." },
@@ -52,13 +56,13 @@ const Consolidar = () => {
 
     try {
       const ids = validados.map((a) => Number(a.id));
-      const result = await consolidacionesApi.consolidar(ids);
+      const result = await consolidacionesApi.consolidar(ids, periodo);
       setProgress(100);
       setPhase("✅ Consolidación completada");
       setResultFile(result.archivo);
       setResultId(result.consolidacion_id);
       setDone(true);
-      toast({ title: "¡Consolidación completada!", description: "El archivo consolidado está listo para descargar." });
+      toast({ title: "¡Consolidación completada!", description: `Consolidación de ${formatPeriodo(periodo)} lista para descargar.` });
     } catch (err: any) {
       toast({ title: "Error en consolidación", description: err.message, variant: "destructive" });
     } finally {
@@ -76,11 +80,14 @@ const Consolidar = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold font-display text-foreground">Consolidar Archivos</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          {validados.length} de {programas.length} archivos validados
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold font-display text-foreground">Consolidar Archivos</h1>
+          <p className="text-muted-foreground text-sm mt-1">
+            {validados.length} de {programas.length} archivos validados — {formatPeriodo(periodo)}
+          </p>
+        </div>
+        <PeriodSelector periodo={periodo} onChange={setPeriodo} />
       </div>
 
       {/* Program checklist */}
@@ -125,7 +132,7 @@ const Consolidar = () => {
           <div>
             <h3 className="font-bold text-foreground text-lg">¡Consolidación Exitosa!</h3>
             <p className="text-sm text-muted-foreground mt-1">
-              Se consolidaron {validados.length} archivos correctamente
+              Se consolidaron {validados.length} archivos de {formatPeriodo(periodo)}
             </p>
           </div>
           <Button onClick={() => resultId && consolidacionesApi.descargar(resultId)}>

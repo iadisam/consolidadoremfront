@@ -5,7 +5,7 @@
 
 import { User, UserRole, ArchivoSubido, Consolidacion, FileStatus } from "@/lib/constants";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://172.25.5.106:8021";
 
 // ==================== TOKEN MANAGEMENT ====================
 
@@ -48,7 +48,14 @@ async function apiRequest<T>(
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: "Error de conexión" }));
-    throw new ApiError(response.status, error.detail || "Error desconocido");
+    const detail = error.detail;
+    // Si detail es un objeto estructurado (ej: validación de mes), preservar la estructura
+    if (typeof detail === "object" && detail !== null) {
+      const apiErr = new ApiError(response.status, detail.mensaje || detail.error || "Error desconocido");
+      (apiErr as any).structured = detail;
+      throw apiErr;
+    }
+    throw new ApiError(response.status, detail || "Error desconocido");
   }
 
   return response.json();
@@ -86,6 +93,7 @@ interface ApiArchivo {
   fecha_subida: string;
   fecha_validacion: string | null;
   activo: boolean;
+  periodo: string | null;
   usuario_nombre: string;
   programa_nombre: string;
   validado_por_nombre: string | null;
@@ -97,6 +105,7 @@ interface ApiConsolidacion {
   archivos_count: number;
   creado_por: number;
   fecha: string;
+  periodo: string | null;
   creado_por_nombre: string;
 }
 
@@ -114,7 +123,7 @@ interface ApiUsuario {
 interface ApiPrograma {
   id: number;
   nombre: string;
-  activo: boolean;
+  codigo?: string;
 }
 
 // ==================== TRANSFORMADORES ====================
@@ -134,6 +143,7 @@ function transformArchivo(a: ApiArchivo): ArchivoSubido {
     nombre_archivo: a.nombre_archivo,
     fecha_subida: formatDate(a.fecha_subida),
     estado: a.estado as FileStatus,
+    periodo: a.periodo || undefined,
     observaciones: a.observaciones || undefined,
     validado_por: a.validado_por_nombre || undefined,
     fecha_validacion: a.fecha_validacion ? formatDate(a.fecha_validacion) : undefined,
@@ -147,6 +157,7 @@ function transformConsolidacion(c: ApiConsolidacion): Consolidacion {
     archivos_count: c.archivos_count,
     nombre_archivo: c.nombre_archivo,
     creado_por: c.creado_por_nombre || "Admin",
+    periodo: c.periodo || undefined,
   };
 }
 
@@ -237,18 +248,20 @@ export const authApi = {
 // ==================== ARCHIVOS ====================
 
 export const archivosApi = {
-  async listar(estado?: string): Promise<ArchivoSubido[]> {
+  async listar(estado?: string, periodo?: string): Promise<ArchivoSubido[]> {
     const params = new URLSearchParams();
     if (estado) params.set("estado", estado);
+    if (periodo) params.set("periodo", periodo);
     const query = params.toString() ? `?${params}` : "";
     const data = await apiRequest<ApiArchivo[]>(`/archivos${query}`);
     return data.map(transformArchivo);
   },
 
-  async subir(file: File, programaId?: number): Promise<{ archivo_id: number; filename: string }> {
+  async subir(file: File, programaId?: number, periodo?: string): Promise<{ archivo_id: number; filename: string }> {
     const formData = new FormData();
     formData.append("file", file);
     if (programaId) formData.append("programa_id", String(programaId));
+    if (periodo) formData.append("periodo", periodo);
     return apiRequest(`/archivos/upload`, { method: "POST", body: formData });
   },
 
@@ -264,7 +277,7 @@ export const archivosApi = {
   },
 
   descargarPlantilla() {
-    descargarConFetch(`${API_BASE_URL}/plantilla/download`, "SA_26_V1.1.xlsm");
+    descargarConFetch(`${API_BASE_URL}/plantilla/download`, "SA_26_V1.2.xlsm");
   },
 
   async resubir(archivoId: number, file: File): Promise<{ archivo_id: number; filename: string }> {
@@ -277,13 +290,16 @@ export const archivosApi = {
 // ==================== CONSOLIDACIONES ====================
 
 export const consolidacionesApi = {
-  async listar(): Promise<Consolidacion[]> {
-    const data = await apiRequest<ApiConsolidacion[]>("/consolidaciones");
+  async listar(periodo?: string): Promise<Consolidacion[]> {
+    const params = new URLSearchParams();
+    if (periodo) params.set("periodo", periodo);
+    const query = params.toString() ? `?${params}` : "";
+    const data = await apiRequest<ApiConsolidacion[]>(`/consolidaciones${query}`);
     return data.map(transformConsolidacion);
   },
 
-  async consolidar(archivosIds: number[]): Promise<{ consolidacion_id: number; archivo: string }> {
-    return apiRequest("/consolidar", { method: "POST", body: JSON.stringify({ archivos_ids: archivosIds }) });
+  async consolidar(archivosIds: number[], periodo?: string): Promise<{ consolidacion_id: number; archivo: string }> {
+    return apiRequest("/consolidar", { method: "POST", body: JSON.stringify({ archivos_ids: archivosIds, periodo }) });
   },
 
   descargar(consolidacionId: number) {
@@ -317,5 +333,16 @@ export const usuariosApi = {
 export const logsApi = {
   async obtener(limit = 100) {
     return apiRequest<any[]>(`/logs?limit=${limit}`);
+  },
+
+  async porArchivo(archivoId: number): Promise<{ id: string; accion: string; detalle: string | null; usuario_nombre: string; fecha: string }[]> {
+    const data = await apiRequest<any[]>(`/archivos/${archivoId}/historial`);
+    return data.map((l: any) => ({
+      id: String(l.id),
+      accion: l.accion,
+      detalle: l.detalle || null,
+      usuario_nombre: l.usuario_nombre || "Sistema",
+      fecha: l.fecha,
+    }));
   },
 };

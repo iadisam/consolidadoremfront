@@ -1,36 +1,40 @@
 import { useState, useEffect } from "react";
-import { archivosApi, consolidacionesApi, programasApi } from "@/lib/api";
+import { archivosApi, consolidacionesApi, programasApi, usuariosApi } from "@/lib/api";
 import { ArchivoSubido, Consolidacion } from "@/lib/constants";
 import MetricCard from "@/components/MetricCard";
 import StatusBadge from "@/components/StatusBadge";
+import PeriodSelector, { getCurrentPeriodo, formatPeriodo } from "@/components/PeriodSelector";
 import { Clock, CheckSquare, FileSpreadsheet, Users, ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 
 const AdminDashboard = () => {
+  const [periodo, setPeriodo] = useState(getCurrentPeriodo());
   const [archivos, setArchivos] = useState<ArchivoSubido[]>([]);
   const [consolidaciones, setConsolidaciones] = useState<Consolidacion[]>([]);
   const [programas, setProgramas] = useState<{ id: number; nombre: string }[]>([]);
+  const [totalUsuarios, setTotalUsuarios] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    setLoading(true);
     Promise.all([
-      archivosApi.listar(),
-      consolidacionesApi.listar(),
+      archivosApi.listar(undefined, periodo),
+      consolidacionesApi.listar(periodo),
       programasApi.listar(),
+      usuariosApi.listar(),
     ])
-      .then(([arch, cons, progs]) => {
+      .then(([arch, cons, progs, users]) => {
         setArchivos(arch);
         setConsolidaciones(cons);
         setProgramas(progs);
+        setTotalUsuarios(users.filter((u) => u.activo).length);
       })
       .finally(() => setLoading(false));
-  }, []);
+  }, [periodo]);
 
   const pendientes = archivos.filter((a) => a.estado === "pendiente").length;
   const validados = archivos.filter((a) => a.estado === "validado").length;
   const totalConsolidaciones = consolidaciones.length;
-  const totalUsuarios = 14; // TODO: obtener de endpoint /usuarios cuando exista
 
   const programStatus = programas.map((p) => {
     const archivo = archivos.find((a) => a.programa === p.nombre);
@@ -47,9 +51,12 @@ const AdminDashboard = () => {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold font-display text-foreground">Panel de Administración</h1>
-        <p className="text-muted-foreground text-sm mt-1">Resumen del estado de los archivos REM</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold font-display text-foreground">Panel de Administración</h1>
+          <p className="text-muted-foreground text-sm mt-1">Resumen del estado de los archivos REM — {formatPeriodo(periodo)}</p>
+        </div>
+        <PeriodSelector periodo={periodo} onChange={setPeriodo} />
       </div>
 
       {/* Metrics */}
@@ -106,7 +113,7 @@ const AdminDashboard = () => {
 
       {/* Recent Consolidations */}
       <div>
-        <h2 className="text-lg font-semibold font-display text-foreground mb-4">Últimas Consolidaciones</h2>
+        <h2 className="text-lg font-semibold font-display text-foreground mb-4">Consolidaciones del Periodo</h2>
         <div className="bg-card border rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead>
@@ -118,14 +125,22 @@ const AdminDashboard = () => {
               </tr>
             </thead>
             <tbody>
-              {consolidaciones.map((c) => (
-                <tr key={c.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
-                  <td className="px-4 py-3 font-medium text-foreground">{c.nombre_archivo}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{c.fecha}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{c.archivos_count}/{programas.length}</td>
-                  <td className="px-4 py-3 text-muted-foreground">{c.creado_por}</td>
+              {consolidaciones.length === 0 ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-8 text-center text-muted-foreground text-sm">
+                    Sin consolidaciones en este periodo
+                  </td>
                 </tr>
-              ))}
+              ) : (
+                consolidaciones.map((c) => (
+                  <tr key={c.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                    <td className="px-4 py-3 font-medium text-foreground">{c.nombre_archivo}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{c.fecha}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{c.archivos_count}/{programas.length}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{c.creado_por}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

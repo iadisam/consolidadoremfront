@@ -40,6 +40,7 @@ export interface ArchivoSubido {
   nombre_archivo: string;
   fecha_subida: string;
   estado: FileStatus;
+  periodo?: string;
   observaciones?: string;
   validado_por?: string;
   fecha_validacion?: string;
@@ -51,6 +52,7 @@ export interface Consolidacion {
   archivos_count: number;
   nombre_archivo: string;
   creado_por: string;
+  periodo?: string;
 }
 
 
