@@ -5,7 +5,7 @@
 
 import { User, UserRole, ArchivoSubido, Consolidacion, FileStatus } from "@/lib/constants";
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8021";
+const API_BASE_URL = import.meta.env.VITE_API_URL || "http://172.25.5.106:8021";
 
 // ==================== TOKEN MANAGEMENT ====================
 
