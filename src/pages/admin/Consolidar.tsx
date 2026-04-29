@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
 import { archivosApi, consolidacionesApi, programasApi } from "@/lib/api";
-import { ArchivoSubido } from "@/lib/constants";
+import { ArchivoSubido, Consolidacion } from "@/lib/constants";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Textarea } from "@/components/ui/textarea";
 import PeriodSelector, { getCurrentPeriodo, formatPeriodo } from "@/components/PeriodSelector";
-import { CheckSquare, FileSpreadsheet, Download, Loader2 } from "lucide-react";
+import { CheckSquare, FileSpreadsheet, Download, Loader2, CheckCircle, XCircle, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const Consolidar = () => {
@@ -14,32 +15,40 @@ const Consolidar = () => {
   const [loading, setLoading] = useState(true);
   const [consolidating, setConsolidating] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [resultId, setResultId] = useState<number | null>(null);
   const [phase, setPhase] = useState("");
-  const [done, setDone] = useState(false);
-  const [resultFile, setResultFile] = useState("");
+
+  // Post-consolidation review state
+  const [pendiente, setPendiente] = useState<Consolidacion | null>(null);
+  const [showRejectForm, setShowRejectForm] = useState(false);
+  const [observaciones, setObservaciones] = useState("");
+  const [validating, setValidating] = useState(false);
+
   const { toast } = useToast();
 
   useEffect(() => {
     setLoading(true);
-    setDone(false);
+    setShowRejectForm(false);
+    setObservaciones("");
     Promise.all([
       archivosApi.listar("validado", periodo),
       programasApi.listar(),
+      consolidacionesApi.listar(periodo),
     ])
-      .then(([arch, progs]) => {
+      .then(([arch, progs, cons]) => {
         setValidados(arch);
         setProgramas(progs);
+        // Check if there's a pending consolidation for this period
+        const pending = cons.find((c) => c.estado === "pendiente");
+        setPendiente(pending || null);
       })
       .finally(() => setLoading(false));
   }, [periodo]);
 
-  const canConsolidate = validados.length >= 2;
+  const canConsolidate = validados.length >= 2 && !pendiente;
 
   const handleConsolidate = async () => {
     setConsolidating(true);
     setProgress(0);
-    setDone(false);
 
     const phases = [
       { p: 10, text: "📂 Cargando plantilla base SA_26_V1.2.xlsm..." },
@@ -58,15 +67,60 @@ const Consolidar = () => {
       const ids = validados.map((a) => Number(a.id));
       const result = await consolidacionesApi.consolidar(ids, periodo);
       setProgress(100);
-      setPhase("✅ Consolidación completada");
-      setResultFile(result.archivo);
-      setResultId(result.consolidacion_id);
-      setDone(true);
-      toast({ title: "¡Consolidación completada!", description: `Consolidación de ${formatPeriodo(periodo)} lista para descargar.` });
+      setPhase("✅ Consolidación generada — pendiente de revisión");
+
+      // Reload consolidations to get the pending one
+      const cons = await consolidacionesApi.listar(periodo);
+      const pending = cons.find((c) => c.estado === "pendiente");
+      setPendiente(pending || null);
+
+      toast({
+        title: "Consolidación generada",
+        description: "Descarga y revisa el archivo antes de aprobar.",
+      });
     } catch (err: any) {
       toast({ title: "Error en consolidación", description: err.message, variant: "destructive" });
     } finally {
       setConsolidating(false);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!pendiente) return;
+    setValidating(true);
+    try {
+      await consolidacionesApi.validar(Number(pendiente.id), "aprobada");
+      toast({
+        title: "✅ REM del mes cerrado",
+        description: `Consolidación de ${formatPeriodo(periodo)} aprobada exitosamente.`,
+      });
+      setPendiente(null);
+      // Reload validated files (they should now be 'consolidado')
+      const arch = await archivosApi.listar("validado", periodo);
+      setValidados(arch);
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setValidating(false);
+    }
+  };
+
+  const handleReject = async () => {
+    if (!pendiente || !observaciones.trim()) return;
+    setValidating(true);
+    try {
+      await consolidacionesApi.validar(Number(pendiente.id), "rechazada", observaciones.trim());
+      toast({
+        title: "Consolidación rechazada",
+        description: "Puedes volver a consolidar los archivos.",
+      });
+      setPendiente(null);
+      setShowRejectForm(false);
+      setObservaciones("");
+    } catch (err: any) {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } finally {
+      setValidating(false);
     }
   };
 
@@ -126,22 +180,85 @@ const Consolidar = () => {
         </div>
       )}
 
-      {done && (
-        <div className="bg-success/10 border border-success/30 rounded-xl p-6 text-center space-y-4">
-          <FileSpreadsheet className="w-12 h-12 text-success mx-auto" />
-          <div>
-            <h3 className="font-bold text-foreground text-lg">¡Consolidación Exitosa!</h3>
-            <p className="text-sm text-muted-foreground mt-1">
-              Se consolidaron {validados.length} archivos de {formatPeriodo(periodo)}
-            </p>
+      {/* Pending review panel */}
+      {pendiente && !consolidating && (
+        <div className="bg-warning/5 border border-warning/30 rounded-xl p-6 space-y-5">
+          <div className="flex items-start gap-4">
+            <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-warning/10 shrink-0">
+              <AlertTriangle className="w-6 h-6 text-warning" />
+            </div>
+            <div>
+              <h3 className="font-bold text-foreground text-lg">Consolidación Pendiente de Revisión</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Se consolidaron {pendiente.archivos_count} archivos de {formatPeriodo(periodo)}.
+                Descarga y revisa el archivo antes de aprobar.
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Generado el {pendiente.fecha} por {pendiente.creado_por}
+              </p>
+            </div>
           </div>
-          <Button onClick={() => resultId && consolidacionesApi.descargar(resultId)}>
-            <Download className="w-4 h-4 mr-2" /> Descargar {resultFile}
-          </Button>
+
+          {/* Actions */}
+          <div className="flex flex-wrap gap-3">
+            <Button
+              variant="outline"
+              onClick={() => consolidacionesApi.descargar(Number(pendiente.id))}
+            >
+              <Download className="w-4 h-4 mr-2" /> Descargar para Revisar
+            </Button>
+            <Button
+              onClick={handleApprove}
+              disabled={validating}
+              className="bg-success hover:bg-success/90 text-success-foreground"
+            >
+              {validating ? (
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <CheckCircle className="w-4 h-4 mr-2" />
+              )}
+              Aprobar y Cerrar REM
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => setShowRejectForm(!showRejectForm)}
+              disabled={validating}
+            >
+              <XCircle className="w-4 h-4 mr-2" /> Rechazar
+            </Button>
+          </div>
+
+          {/* Reject form */}
+          {showRejectForm && (
+            <div className="space-y-3 pt-2 border-t border-border">
+              <label className="text-sm font-medium text-foreground">
+                Motivo del rechazo
+              </label>
+              <Textarea
+                value={observaciones}
+                onChange={(e) => setObservaciones(e.target.value)}
+                placeholder="Describe por qué se rechaza la consolidación..."
+                className="min-h-[80px]"
+              />
+              <Button
+                variant="destructive"
+                disabled={!observaciones.trim() || validating}
+                onClick={handleReject}
+              >
+                {validating ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <XCircle className="w-4 h-4 mr-2" />
+                )}
+                Confirmar Rechazo
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
-      {!consolidating && !done && (
+      {/* Consolidate button — only if no pending */}
+      {!consolidating && !pendiente && (
         <Button
           size="lg"
           disabled={!canConsolidate}

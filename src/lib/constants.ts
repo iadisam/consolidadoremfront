@@ -30,6 +30,8 @@ export interface User {
   rol: UserRole;
   programa?: Program;
   activo: boolean;
+  cesfam_id?: number;
+  cesfam_nombre?: string;
 }
 
 export interface ArchivoSubido {
@@ -46,6 +48,8 @@ export interface ArchivoSubido {
   fecha_validacion?: string;
 }
 
+export type ConsolidacionEstado = "pendiente" | "aprobada" | "rechazada";
+
 export interface Consolidacion {
   id: string;
   fecha: string;
@@ -53,6 +57,8 @@ export interface Consolidacion {
   nombre_archivo: string;
   creado_por: string;
   periodo?: string;
+  estado: ConsolidacionEstado;
+  observaciones_revision?: string;
 }
 
 

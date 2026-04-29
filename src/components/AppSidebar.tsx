@@ -31,7 +31,9 @@ const AppSidebar = () => {
             <h1 className="text-sm font-bold font-display text-sidebar-foreground leading-tight">
               Consolidador REM
             </h1>
-            <p className="text-[10px] text-sidebar-muted leading-tight">Dirección de Salud</p>
+            <p className="text-[10px] text-sidebar-muted leading-tight">
+              {user?.cesfam_nombre || "Dirección de Salud"}
+            </p>
           </div>
         )}
       </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useAuth } from "@/context/AuthContext";
 import { archivosApi, consolidacionesApi, programasApi, usuariosApi } from "@/lib/api";
 import { ArchivoSubido, Consolidacion } from "@/lib/constants";
 import MetricCard from "@/components/MetricCard";
@@ -8,6 +9,7 @@ import { Clock, CheckSquare, FileSpreadsheet, Users, ArrowRight } from "lucide-r
 import { Link } from "react-router-dom";
 
 const AdminDashboard = () => {
+  const { user: currentUser } = useAuth();
   const [periodo, setPeriodo] = useState(getCurrentPeriodo());
   const [archivos, setArchivos] = useState<ArchivoSubido[]>([]);
   const [consolidaciones, setConsolidaciones] = useState<Consolidacion[]>([]);
@@ -54,7 +56,11 @@ const AdminDashboard = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold font-display text-foreground">Panel de Administración</h1>
-          <p className="text-muted-foreground text-sm mt-1">Resumen del estado de los archivos REM — {formatPeriodo(periodo)}</p>
+          <p className="text-muted-foreground text-sm mt-1">
+            {currentUser?.cesfam_nombre && <span className="font-semibold">{currentUser.cesfam_nombre}</span>}
+            {currentUser?.cesfam_nombre && " · "}
+            Resumen del estado de los archivos REM — {formatPeriodo(periodo)}
+          </p>
         </div>
         <PeriodSelector periodo={periodo} onChange={setPeriodo} />
       </div>

@@ -80,6 +80,8 @@ interface LoginResponse {
     rol: string;
     programa_id: number | null;
     programa_nombre: string | null;
+    cesfam_id: number | null;
+    cesfam_nombre: string | null;
   };
 }
 
@@ -107,6 +109,8 @@ interface ApiConsolidacion {
   fecha: string;
   periodo: string | null;
   creado_por_nombre: string;
+  estado: string;
+  observaciones_revision: string | null;
 }
 
 interface ApiUsuario {
@@ -118,6 +122,8 @@ interface ApiUsuario {
   activo: boolean;
   created_at: string;
   programa_nombre?: string;
+  cesfam_id?: number;
+  cesfam_nombre?: string;
 }
 
 interface ApiPrograma {
@@ -158,6 +164,8 @@ function transformConsolidacion(c: ApiConsolidacion): Consolidacion {
     nombre_archivo: c.nombre_archivo,
     creado_por: c.creado_por_nombre || "Admin",
     periodo: c.periodo || undefined,
+    estado: (c.estado || "pendiente") as Consolidacion["estado"],
+    observaciones_revision: c.observaciones_revision || undefined,
   };
 }
 
@@ -169,6 +177,8 @@ function transformUsuario(u: ApiUsuario): User {
     rol: u.rol as UserRole,
     programa: u.programa_nombre as any,
     activo: u.activo,
+    cesfam_id: u.cesfam_id,
+    cesfam_nombre: u.cesfam_nombre,
   };
 }
 
@@ -215,6 +225,8 @@ export const authApi = {
       rol: data.user.rol as UserRole,
       programa: (data.user.programa_nombre || undefined) as any,
       activo: true,
+      cesfam_id: data.user.cesfam_id ?? undefined,
+      cesfam_nombre: data.user.cesfam_nombre ?? undefined,
     };
 
     return { user, token: data.access_token };
@@ -228,6 +240,8 @@ export const authApi = {
       rol: string;
       programa_id: number | null;
       programa_nombre: string | null;
+      cesfam_id: number | null;
+      cesfam_nombre: string | null;
     }>("/auth/me");
 
     return {
@@ -237,6 +251,8 @@ export const authApi = {
       rol: data.rol as UserRole,
       programa: (data.programa_nombre || undefined) as any,
       activo: true,
+      cesfam_id: data.cesfam_id ?? undefined,
+      cesfam_nombre: data.cesfam_nombre ?? undefined,
     };
   },
 
@@ -305,6 +321,13 @@ export const consolidacionesApi = {
   descargar(consolidacionId: number) {
     descargarConFetch(`${API_BASE_URL}/consolidaciones/${consolidacionId}/download`);
   },
+
+  async validar(consolidacionId: number, estado: "aprobada" | "rechazada", observaciones?: string) {
+    return apiRequest<{ message: string }>(`/consolidaciones/${consolidacionId}/validar`, {
+      method: "POST",
+      body: JSON.stringify({ estado, observaciones }),
+    });
+  },
 };
 
 // ==================== PROGRAMAS ====================
@@ -323,7 +346,7 @@ export const usuariosApi = {
     return data.map(transformUsuario);
   },
 
-  async crear(data: { nombre: string; email: string; password: string; rol: string; programa_id?: number }) {
+  async crear(data: { nombre: string; email: string; password: string; rol: string; programa_id?: number; cesfam_id?: number }) {
     return apiRequest("/auth/register", { method: "POST", body: JSON.stringify(data) });
   },
 };
